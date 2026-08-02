@@ -47,5 +47,5 @@ packages = ["src/uploadkit_django"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src"]
+pythonpath = [".", "src"]
 DJANGO_SETTINGS_MODULE = "tests.settings"
