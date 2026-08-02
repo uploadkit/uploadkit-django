@@ -24,9 +24,15 @@ Do not put validators, policies, or storage implementations in this package.
 Requires **Python 3.10–3.13** and **Django 4.2+**.
 
 ```bash
-pip install uploadkit-django
-# optional security validators
-pip install uploadkit-security
+pip install uploadkit-django uploadkit-security
+```
+
+```bash
+uv add uploadkit-django uploadkit-security
+```
+
+```bash
+poetry add uploadkit-django uploadkit-security
 ```
 
 ### Python × Django support
