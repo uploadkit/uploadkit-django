@@ -1,5 +1,10 @@
 # uploadkit-django
 
+[![CI](https://github.com/uploadkit/uploadkit-django/actions/workflows/ci.yml/badge.svg)](https://github.com/uploadkit/uploadkit-django/actions/workflows/ci.yml)
+[![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen)](https://github.com/uploadkit/uploadkit-django/actions/workflows/ci.yml)
+[![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue)](pyproject.toml)
+[![Django](https://img.shields.io/badge/django-4.2%2B-green)](pyproject.toml)
+
 Django integration for UploadKit.
 
 ## What problem does this solve?
