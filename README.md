@@ -17,7 +17,7 @@ Use when your Django (or DRF) app uploads files through UploadKit Core.
 
 ## When not to use it
 
-Do not put validators, policies, or storage implementations in this package.
+Do not put validators, policies, or storage implementations in this package. Supply your own `StorageProvider` (e.g. boto3 → AWS S3 or MinIO).
 
 ## Installation
 
@@ -35,6 +35,8 @@ uv add uploadkit-django uploadkit-security
 poetry add uploadkit-django uploadkit-security
 ```
 
+For S3/MinIO samples: `pip install boto3`.
+
 ### Python × Django support
 
 | Python | Django |
@@ -44,49 +46,117 @@ poetry add uploadkit-django uploadkit-security
 
 Python 3.14 will be added once Django officially supports it.
 
-## Quick Start
+## Storage provider (AWS S3 or MinIO)
+
+Same class for both backends — omit `endpoint_url` for AWS, set it for MinIO:
 
 ```python
+# myapp/storage.py
+import boto3
+from botocore.client import Config
+from django.conf import settings
+
+
+class Boto3S3Storage:
+    def __init__(
+        self,
+        *,
+        access_key: str,
+        secret_key: str,
+        region: str = "us-east-1",
+        endpoint_url: str | None = None,
+    ) -> None:
+        kwargs: dict = {
+            "service_name": "s3",
+            "aws_access_key_id": access_key,
+            "aws_secret_access_key": secret_key,
+            "region_name": region,
+            "config": Config(signature_version="s3v4"),
+        }
+        if endpoint_url:
+            kwargs["endpoint_url"] = endpoint_url
+        self.client = boto3.client(**kwargs)
+
+    def put(self, *, bucket, object_name, body, content_type):
+        resp = self.client.put_object(
+            Bucket=bucket,
+            Key=object_name,
+            Body=body,
+            ContentType=content_type,
+        )
+        return resp.get("ETag")
+
+
+def get_provider():
+    """Factory used by UPLOADKIT_STORAGE_PROVIDER."""
+    return Boto3S3Storage(
+        access_key=settings.AWS_ACCESS_KEY_ID,
+        secret_key=settings.AWS_SECRET_ACCESS_KEY,
+        region=getattr(settings, "AWS_S3_REGION_NAME", "us-east-1"),
+        endpoint_url=getattr(settings, "AWS_S3_ENDPOINT_URL", None),
+    )
+```
+
+**AWS S3** (`settings.py`):
+
+```python
+AWS_ACCESS_KEY_ID = "AKIA..."
+AWS_SECRET_ACCESS_KEY = "..."
+AWS_S3_REGION_NAME = "eu-west-1"
+# AWS_S3_ENDPOINT_URL unset → real AWS
+UPLOADKIT_STORAGE_PROVIDER = "myapp.storage.get_provider"
+UPLOADKIT_BUCKET = "my-prod-bucket"
+```
+
+**MinIO** (`settings.py`):
+
+```python
+AWS_ACCESS_KEY_ID = "minioadmin"
+AWS_SECRET_ACCESS_KEY = "minioadmin"
+AWS_S3_REGION_NAME = "us-east-1"
+AWS_S3_ENDPOINT_URL = "http://127.0.0.1:9000"
+UPLOADKIT_STORAGE_PROVIDER = "myapp.storage.get_provider"
+UPLOADKIT_BUCKET = "uploads"
+```
+
+## Quick Start (view)
+
+```python
+# myapp/views.py
+from django.conf import settings
 from django.http import JsonResponse
-from uploadkit import Uploader, UploadPolicy
-from uploadkit_django import as_uploadable, json_error_response
+from uploadkit import Uploader, UploadPolicy, UploaderError
+from uploadkit_django import as_uploadable, get_storage_provider, json_error_response
 from uploadkit_security import default_validators
-from uploadkit import UploaderError
+
 
 def upload_view(request):
-    storage = ...  # your StorageProvider
+    storage = get_storage_provider()  # Boto3S3Storage for AWS or MinIO
     policy = UploadPolicy(
         max_size=5 * 1024 * 1024,
         allowed_extensions=frozenset({"png"}),
         allowed_mime_types=frozenset({"image/png"}),
         validators=default_validators(),
     )
+    uploaded = request.FILES["file"]
     try:
         result = Uploader(policy, storage).upload(
-            as_uploadable(request.FILES["file"]),
-            bucket="uploads",
-            object_name="path/file.png",
+            as_uploadable(uploaded),
+            bucket=settings.UPLOADKIT_BUCKET,
+            object_name=uploaded.name,
         )
     except UploaderError as exc:
         return json_error_response(exc)
-    return JsonResponse({"object_name": result.object_name, "sha256": result.sha256})
-```
-
-### Settings
-
-```python
-# settings.py
-UPLOADKIT_STORAGE_PROVIDER = "myapp.storage.get_provider"  # callable factory
-```
-
-```python
-from uploadkit_django import get_storage_provider
-storage = get_storage_provider()
+    return JsonResponse({
+        "object_name": result.object_name,
+        "sha256": result.sha256,
+        "etag": result.etag,
+    })
 ```
 
 ## Architecture
 
-Thin adapters over UploadKit Core protocols. Django's `UploadedFile` already satisfies `UploadableFile`; `as_uploadable` makes that explicit.
+Thin adapters over UploadKit Core. Django's `UploadedFile` duck-types `UploadableFile`; `as_uploadable` makes that explicit.
 
 ## Public API
 
